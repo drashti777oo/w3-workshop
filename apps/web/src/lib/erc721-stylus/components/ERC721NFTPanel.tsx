@@ -52,7 +52,6 @@ export function ERC721NFTPanel() {
           {collectionInfo?.name || 'SuperPositionNFT'} ({collectionInfo?.symbol || 'SPTNFT'})
         </h3>
         <div className="space-y-1 text-sm text-gray-400">
-          <p>Total Supply: {collectionInfo?.formattedTotalSupply || '0'}</p>
           <p>Your NFTs: {balance?.balance?.toString() || '0'}</p>
           <p className="text-xs font-mono truncate">{NFT_ADDRESS}</p>
         </div>

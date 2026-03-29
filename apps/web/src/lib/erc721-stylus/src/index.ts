@@ -55,10 +55,6 @@ export {
   approve,
   setApprovalForAll,
   burn,
-  setBaseUri,
-  pause,
-  unpause,
-  transferOwnership,
 } from './interactions';
 
 // React Hooks

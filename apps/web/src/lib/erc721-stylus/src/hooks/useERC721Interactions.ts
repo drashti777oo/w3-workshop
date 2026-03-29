@@ -3,6 +3,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
+import { Interface } from 'ethers';
 import type { Address, Hash } from 'viem';
 import { ERC721_ABI } from '../constants';
 import type { 
@@ -18,7 +19,7 @@ import type {
 export function useERC721Interactions(options: UseERC721InteractionsOptions): UseERC721InteractionsReturn {
   const { 
     contractAddress, 
-    network,
+    network: _network,
     publicClient,
     walletClient,
     userAddress,
@@ -35,7 +36,7 @@ export function useERC721Interactions(options: UseERC721InteractionsOptions): Us
     
     setCollectionInfo({ status: 'loading' });
     try {
-      const [name, symbol, baseUri, totalSupply, owner, paused] = await Promise.all([
+      const [name, symbol] = await Promise.all([
         publicClient.readContract({
           address: contractAddress,
           abi: ERC721_ABI,
@@ -46,26 +47,6 @@ export function useERC721Interactions(options: UseERC721InteractionsOptions): Us
           abi: ERC721_ABI,
           functionName: 'symbol',
         }) as Promise<string>,
-        publicClient.readContract({
-          address: contractAddress,
-          abi: ERC721_ABI,
-          functionName: 'baseUri',
-        }) as Promise<string>,
-        publicClient.readContract({
-          address: contractAddress,
-          abi: ERC721_ABI,
-          functionName: 'totalSupply',
-        }) as Promise<bigint>,
-        publicClient.readContract({
-          address: contractAddress,
-          abi: ERC721_ABI,
-          functionName: 'owner',
-        }) as Promise<Address>,
-        publicClient.readContract({
-          address: contractAddress,
-          abi: ERC721_ABI,
-          functionName: 'paused',
-        }) as Promise<boolean>,
       ]);
 
       setCollectionInfo({
@@ -74,11 +55,6 @@ export function useERC721Interactions(options: UseERC721InteractionsOptions): Us
           address: contractAddress,
           name,
           symbol,
-          baseUri,
-          totalSupply,
-          formattedTotalSupply: totalSupply.toString(),
-          owner,
-          paused,
         },
       });
     } catch (err) {
@@ -122,7 +98,7 @@ export function useERC721Interactions(options: UseERC721InteractionsOptions): Us
       throw new Error('Public client is required');
     }
     
-    const [owner, tokenUri, approved] = await Promise.all([
+    const [owner, approved] = await Promise.all([
       publicClient.readContract({
         address: contractAddress,
         abi: ERC721_ABI,
@@ -132,18 +108,12 @@ export function useERC721Interactions(options: UseERC721InteractionsOptions): Us
       publicClient.readContract({
         address: contractAddress,
         abi: ERC721_ABI,
-        functionName: 'tokenURI',
-        args: [tokenId],
-      }) as Promise<string>,
-      publicClient.readContract({
-        address: contractAddress,
-        abi: ERC721_ABI,
         functionName: 'getApproved',
         args: [tokenId],
       }) as Promise<Address>,
     ]);
 
-    return { tokenId, owner, tokenUri, approved };
+    return { tokenId, owner, approved };
   }, [publicClient, contractAddress]);
 
   // Helper to execute a write transaction
@@ -189,23 +159,30 @@ export function useERC721Interactions(options: UseERC721InteractionsOptions): Us
       throw new Error('Public client is required');
     }
 
-    // Get current total supply to estimate token ID
-    const totalSupplyBefore = await publicClient.readContract({
-      address: contractAddress,
-      abi: ERC721_ABI,
-      functionName: 'totalSupply',
-    }) as bigint;
-
-    const hash = await executeTransaction('mint', [to]);
-    
-    // Token ID is typically totalSupply + 1 or next token ID
-    const tokenId = totalSupplyBefore + 1n;
+    const hash = await executeTransaction('mintTo', [to]);
+    let tokenId = 0n;
+    const receipt = await publicClient.getTransactionReceipt({ hash });
+    const iface = new Interface(ERC721_ABI as any);
+    for (const log of receipt.logs) {
+      try {
+        const parsed = iface.parseLog({
+          data: log.data,
+          topics: [...log.topics],
+        });
+        if (parsed?.name === 'Transfer') {
+          tokenId = BigInt(parsed.args[2] as bigint);
+          break;
+        }
+      } catch {
+        // Ignore logs from other contracts/events
+      }
+    }
     
     refetchCollectionInfo();
     refetchBalance();
     
     return { hash, tokenId };
-  }, [executeTransaction, publicClient, contractAddress, refetchCollectionInfo, refetchBalance]);
+  }, [executeTransaction, publicClient, refetchCollectionInfo, refetchBalance]);
 
   // Transfer from
   const transferFrom = useCallback(async (from: Address, to: Address, tokenId: bigint): Promise<Hash> => {
@@ -239,34 +216,6 @@ export function useERC721Interactions(options: UseERC721InteractionsOptions): Us
     return hash;
   }, [executeTransaction, refetchCollectionInfo, refetchBalance]);
 
-  // Set base URI
-  const setBaseUri = useCallback(async (baseUri: string): Promise<Hash> => {
-    const hash = await executeTransaction('setBaseUri', [baseUri]);
-    refetchCollectionInfo();
-    return hash;
-  }, [executeTransaction, refetchCollectionInfo]);
-
-  // Pause
-  const pause = useCallback(async (): Promise<Hash> => {
-    const hash = await executeTransaction('pause', []);
-    refetchCollectionInfo();
-    return hash;
-  }, [executeTransaction, refetchCollectionInfo]);
-
-  // Unpause
-  const unpause = useCallback(async (): Promise<Hash> => {
-    const hash = await executeTransaction('unpause', []);
-    refetchCollectionInfo();
-    return hash;
-  }, [executeTransaction, refetchCollectionInfo]);
-
-  // Transfer ownership
-  const transferOwnership = useCallback(async (newOwner: Address): Promise<Hash> => {
-    const hash = await executeTransaction('transferOwnership', [newOwner]);
-    refetchCollectionInfo();
-    return hash;
-  }, [executeTransaction, refetchCollectionInfo]);
-
   return {
     collectionInfo,
     refetchCollectionInfo,
@@ -279,10 +228,6 @@ export function useERC721Interactions(options: UseERC721InteractionsOptions): Us
     approve,
     setApprovalForAll,
     burn,
-    setBaseUri,
-    pause,
-    unpause,
-    transferOwnership,
     txState,
     isLoading: txState.status === 'pending' || txState.status === 'confirming',
     error,

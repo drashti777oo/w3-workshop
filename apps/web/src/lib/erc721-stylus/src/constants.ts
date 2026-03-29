@@ -21,20 +21,8 @@ export const FACTORY_ADDRESSES: Record<SupportedNetwork, Address> = {
   'arbitrum-sepolia': '0xbeaf33e277499dbb7982061d261c6c286494855e' as Address,
 };
 
-// ERC721 Stylus Contract ABI
+// ERC721 Stylus Contract ABI (aligned with contracts/erc721/src)
 export const ERC721_ABI = [
-  // Initialization
-  {
-    type: 'function',
-    name: 'init',
-    inputs: [
-      { name: 'name', type: 'string' },
-      { name: 'symbol', type: 'string' },
-      { name: 'base_uri', type: 'string' },
-    ],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
   // View functions
   {
     type: 'function',
@@ -52,13 +40,6 @@ export const ERC721_ABI = [
   },
   {
     type: 'function',
-    name: 'totalSupply',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     name: 'balanceOf',
     inputs: [{ name: 'owner', type: 'address' }],
     outputs: [{ name: '', type: 'uint256' }],
@@ -69,20 +50,6 @@ export const ERC721_ABI = [
     name: 'ownerOf',
     inputs: [{ name: 'tokenId', type: 'uint256' }],
     outputs: [{ name: '', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'tokenURI',
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'string' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'baseUri',
-    inputs: [],
-    outputs: [{ name: '', type: 'string' }],
     stateMutability: 'view',
   },
   {
@@ -104,15 +71,8 @@ export const ERC721_ABI = [
   },
   {
     type: 'function',
-    name: 'owner',
-    inputs: [],
-    outputs: [{ name: '', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'paused',
-    inputs: [],
+    name: 'supportsInterface',
+    inputs: [{ name: 'interface', type: 'bytes4' }],
     outputs: [{ name: '', type: 'bool' }],
     stateMutability: 'view',
   },
@@ -120,8 +80,22 @@ export const ERC721_ABI = [
   {
     type: 'function',
     name: 'mint',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'mintTo',
     inputs: [{ name: 'to', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'safeMint',
+    inputs: [{ name: 'to', type: 'address' }],
+    outputs: [],
     stateMutability: 'nonpayable',
   },
   {
@@ -142,6 +116,18 @@ export const ERC721_ABI = [
       { name: 'from', type: 'address' },
       { name: 'to', type: 'address' },
       { name: 'tokenId', type: 'uint256' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'safeTransferFrom',
+    inputs: [
+      { name: 'from', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'tokenId', type: 'uint256' },
+      { name: 'data', type: 'bytes' },
     ],
     outputs: [],
     stateMutability: 'nonpayable',
@@ -170,34 +156,6 @@ export const ERC721_ABI = [
     type: 'function',
     name: 'burn',
     inputs: [{ name: 'tokenId', type: 'uint256' }],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'setBaseUri',
-    inputs: [{ name: 'baseUri', type: 'string' }],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'pause',
-    inputs: [],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'unpause',
-    inputs: [],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'transferOwnership',
-    inputs: [{ name: 'newOwner', type: 'address' }],
     outputs: [],
     stateMutability: 'nonpayable',
   },

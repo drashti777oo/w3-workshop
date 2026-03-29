@@ -17,24 +17,15 @@ export async function getCollectionInfo(
   const provider = new ethers.JsonRpcProvider(rpcEndpoint);
   const contract = new ethers.Contract(contractAddress, ERC721_ABI, provider);
 
-  const [name, symbol, baseUri, totalSupply, owner, paused] = await Promise.all([
+  const [name, symbol] = await Promise.all([
     contract.name(),
     contract.symbol(),
-    contract.baseUri(),
-    contract.totalSupply(),
-    contract.owner(),
-    contract.paused(),
   ]);
 
   return {
     address: contractAddress,
     name,
     symbol,
-    baseUri,
-    totalSupply: BigInt(totalSupply),
-    formattedTotalSupply: totalSupply.toString(),
-    owner: owner as Address,
-    paused,
   };
 }
 
@@ -67,16 +58,14 @@ export async function getNFTInfo(
   const provider = new ethers.JsonRpcProvider(rpcEndpoint);
   const contract = new ethers.Contract(contractAddress, ERC721_ABI, provider);
 
-  const [owner, tokenUri, approved] = await Promise.all([
+  const [owner, approved] = await Promise.all([
     contract.ownerOf(tokenId),
-    contract.tokenURI(tokenId),
     contract.getApproved(tokenId),
   ]);
 
   return {
     tokenId,
     owner: owner as Address,
-    tokenUri,
     approved: approved as Address,
   };
 }
@@ -94,16 +83,16 @@ export async function mint(
   const wallet = new ethers.Wallet(privateKey, provider);
   const contract = new ethers.Contract(contractAddress, ERC721_ABI, wallet);
 
-  const tx = await contract.mint(to);
+  const tx = await contract.mintTo(to);
   const receipt = await tx.wait();
   
   // Parse the Transfer event to get the token ID
-  let tokenId = 0n;
+  let tokenId = BigInt(0);
   for (const log of receipt.logs) {
     try {
       const parsed = contract.interface.parseLog(log);
       if (parsed?.name === 'Transfer') {
-        tokenId = BigInt(parsed.args[2]); // tokenId is the third argument
+        tokenId = BigInt(parsed.args[2] as bigint);
         break;
       }
     } catch {
@@ -213,80 +202,6 @@ export async function burn(
   const contract = new ethers.Contract(contractAddress, ERC721_ABI, wallet);
 
   const tx = await contract.burn(tokenId);
-  const receipt = await tx.wait();
-  
-  return receipt.hash as Hash;
-}
-
-/**
- * Set base URI (owner only)
- */
-export async function setBaseUri(
-  contractAddress: Address,
-  baseUri: string,
-  privateKey: string,
-  rpcEndpoint: string
-): Promise<Hash> {
-  const provider = new ethers.JsonRpcProvider(rpcEndpoint);
-  const wallet = new ethers.Wallet(privateKey, provider);
-  const contract = new ethers.Contract(contractAddress, ERC721_ABI, wallet);
-
-  const tx = await contract.setBaseUri(baseUri);
-  const receipt = await tx.wait();
-  
-  return receipt.hash as Hash;
-}
-
-/**
- * Pause transfers (owner only)
- */
-export async function pause(
-  contractAddress: Address,
-  privateKey: string,
-  rpcEndpoint: string
-): Promise<Hash> {
-  const provider = new ethers.JsonRpcProvider(rpcEndpoint);
-  const wallet = new ethers.Wallet(privateKey, provider);
-  const contract = new ethers.Contract(contractAddress, ERC721_ABI, wallet);
-
-  const tx = await contract.pause();
-  const receipt = await tx.wait();
-  
-  return receipt.hash as Hash;
-}
-
-/**
- * Unpause transfers (owner only)
- */
-export async function unpause(
-  contractAddress: Address,
-  privateKey: string,
-  rpcEndpoint: string
-): Promise<Hash> {
-  const provider = new ethers.JsonRpcProvider(rpcEndpoint);
-  const wallet = new ethers.Wallet(privateKey, provider);
-  const contract = new ethers.Contract(contractAddress, ERC721_ABI, wallet);
-
-  const tx = await contract.unpause();
-  const receipt = await tx.wait();
-  
-  return receipt.hash as Hash;
-}
-
-/**
- * Transfer ownership (owner only)
- */
-export async function transferOwnership(
-  contractAddress: Address,
-  newOwner: Address,
-  privateKey: string,
-  rpcEndpoint: string
-): Promise<Hash> {
-  const provider = new ethers.JsonRpcProvider(rpcEndpoint);
-  const wallet = new ethers.Wallet(privateKey, provider);
-  const contract = new ethers.Contract(contractAddress, ERC721_ABI, wallet);
-
-  const tx = await contract.transferOwnership(newOwner);
   const receipt = await tx.wait();
   
   return receipt.hash as Hash;

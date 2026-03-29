@@ -34,11 +34,6 @@ export interface CollectionInfo {
   address: Address;
   name: string;
   symbol: string;
-  baseUri: string;
-  totalSupply: bigint;
-  formattedTotalSupply: string;
-  owner: Address;
-  paused: boolean;
 }
 
 /**
@@ -47,7 +42,6 @@ export interface CollectionInfo {
 export interface NFTInfo {
   tokenId: bigint;
   owner: Address;
-  tokenUri: string;
   approved: Address;
 }
 
@@ -146,10 +140,6 @@ export interface UseERC721InteractionsReturn {
   approve: (approved: Address, tokenId: bigint) => Promise<Hash>;
   setApprovalForAll: (operator: Address, approved: boolean) => Promise<Hash>;
   burn: (tokenId: bigint) => Promise<Hash>;
-  setBaseUri: (baseUri: string) => Promise<Hash>;
-  pause: () => Promise<Hash>;
-  unpause: () => Promise<Hash>;
-  transferOwnership: (newOwner: Address) => Promise<Hash>;
   
   // Transaction state
   txState: TransactionState;
