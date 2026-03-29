@@ -349,7 +349,12 @@ export function ERC721InteractionPanel({
     // Check if ethereum provider exists
     const ethereum = (window as any).ethereum;
     if (!ethereum) {
-      throw new Error('No wallet detected. Please install MetaMask.');
+      throw new Error('MetaMask not detected. Please install MetaMask from https://metamask.io and refresh this page.');
+    }
+
+    // Check if MetaMask is ready
+    if (!ethereum.isConnected?.()) {
+      throw new Error('MetaMask is not connected. Please ensure MetaMask is unlocked and connected to this site.');
     }
 
     // Switch chain if necessary
@@ -380,9 +385,9 @@ export function ERC721InteractionPanel({
             throw new Error(`Failed to add ${networkConfig.name} to wallet: ${addError.message}`);
           }
         } else if (switchError.code === 4001) {
-          throw new Error('User rejected chain switch');
+          throw new Error('You rejected the network switch. Please try again and approve in MetaMask.');
         } else {
-          throw switchError;
+          throw new Error(`Failed to switch network: ${switchError.message || 'Unknown error'}`);
         }
       }
     }

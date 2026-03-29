@@ -3,7 +3,7 @@
 import { Suspense } from 'react';
 import { WalletButton } from '@/components/wallet-button';
 import dynamic from 'next/dynamic';
-import { Blocks, ShieldCheck, Sparkles, Rocket } from 'lucide-react';
+import { Blocks, ShieldCheck, Sparkles, Rocket, AlertCircle } from 'lucide-react';
 
 // Lazy load the heavy ERC721 component
 const ERC721InteractionPanel = dynamic(
@@ -47,6 +47,18 @@ export default function Home() {
       <div className="pointer-events-none absolute -top-40 -left-24 h-96 w-96 rounded-full bg-accent-cyan/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-52 -right-20 h-[28rem] w-[28rem] rounded-full bg-accent-magenta/10 blur-3xl" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(139,92,246,0.08),transparent_45%),radial-gradient(circle_at_bottom,_rgba(0,212,255,0.06),transparent_45%)]" />
+
+      {/* MetaMask Not Installed Banner */}
+      {typeof window !== 'undefined' && !window.ethereum && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500/20 border-b border-amber-500/40 p-3">
+          <div className="mx-auto max-w-7xl px-5 flex items-center gap-3">
+            <AlertCircle className="h-4 w-4 text-amber-300 flex-shrink-0" />
+            <p className="text-sm text-amber-200">
+              MetaMask not detected. Please <a href="https://metamask.io" target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-amber-100">install MetaMask</a> to use this app.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="relative mx-auto w-full max-w-7xl px-5 py-10 sm:px-8 lg:px-10 lg:py-16">
         <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-start">
