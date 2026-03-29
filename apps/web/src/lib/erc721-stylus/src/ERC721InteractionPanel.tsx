@@ -94,6 +94,9 @@ const ERC721_ABI = [
   "function setApprovalForAll(address operator, bool approved)",
   "function getApproved(uint256 token_id) view returns (address)",
   "function isApprovedForAll(address owner, address operator) view returns (bool)",
+  // Metadata support (ERC-721 extension)
+  "function tokenURI(uint256 token_id) view returns (string)",
+  "function setBaseUri(string new_base_uri)",
   // StylusNFT Specific Functions (from lib.rs)
   "function mint()",
   "function mintTo(address to)",
@@ -172,6 +175,11 @@ interface TxStatus {
 interface NFTGalleryItem {
   tokenId: string;
   owner: string;
+  // Metadata optional fields
+  name?: string;
+  description?: string;
+  image?: string;
+  uri?: string;
 }
 
 interface MintSuccessState {
@@ -208,6 +216,59 @@ function gradientForToken(tokenId: string): string {
   const hue = Math.abs(hash) % 360;
   const hue2 = (hue + 72) % 360;
   return `linear-gradient(135deg, hsl(${hue} 80% 55%), hsl(${hue2} 85% 45%))`;
+}
+
+/**
+ * Fetches metadata JSON from a URI
+ * Handles both HTTP/HTTPS URLs and data URIs
+ * 
+ * @param uri The metadata URI (from tokenURI contract function)
+ * @returns Parsed metadata object or null if fetch fails
+ * 
+ * Example metadata:
+ * {
+ *   "name": "Sample NFT #5",
+ *   "description": "A demo NFT from the workshop",
+ *   "image": "https://placekitten.com/300/300"
+ * }
+ */
+async function fetchNFTMetadata(uri: string): Promise<Partial<NFTGalleryItem> | null> {
+  try {
+    // Handle data URIs (base64 encoded JSON)
+    if (uri.startsWith('data:')) {
+      const dataUrl = uri.replace(/^data:[^;]*;base64,/, '');
+      const jsonStr = atob(dataUrl);
+      const metadata = JSON.parse(jsonStr);
+      return metadata;
+    }
+
+    // Handle HTTP/HTTPS URLs - use CORS-proxy for public NFT metadata
+    // In production, you'd want your own IPFS gateway or metadata server
+    let fetchUrl = uri;
+    
+    // If it's an IPFS URL, convert to HTTP gateway
+    if (uri.startsWith('ipfs://')) {
+      fetchUrl = `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}`;
+    }
+    
+    const response = await fetch(fetchUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch metadata from ${uri}: ${response.status}`);
+      return null;
+    }
+
+    const metadata = await response.json();
+    return metadata;
+  } catch (error) {
+    console.warn(`Error fetching metadata from ${uri}:`, error);
+    return null;
+  }
 }
 
 export function ERC721InteractionPanel({
@@ -529,7 +590,35 @@ export function ERC721InteractionPanel({
         .sort((a, b) => Number(a) - Number(b))
         .map((tokenId) => ({ tokenId, owner: userAddress }));
 
-      setGalleryItems(gallery);
+      // Fetch metadata for each NFT
+      const enrichedGallery = await Promise.all(
+        gallery.map(async (item) => {
+          try {
+            // Get the tokenURI from the contract
+            const uri = await withTimeout(contract.tokenURI(item.tokenId), 5000);
+            
+            // Fetch and parse the metadata JSON
+            const metadata = await fetchNFTMetadata(uri);
+            
+            return {
+              ...item,
+              uri,
+              name: metadata?.name || `Token #${item.tokenId}`,
+              description: metadata?.description,
+              image: metadata?.image,
+            };
+          } catch (error) {
+            console.warn(`Failed to fetch metadata for token ${item.tokenId}:`, error);
+            // Return item with fallback name even if metadata fetch fails
+            return {
+              ...item,
+              name: `Token #${item.tokenId}`,
+            };
+          }
+        })
+      );
+
+      setGalleryItems(enrichedGallery);
     } catch (error) {
       setGalleryError(normalizeErrorMessage(error));
       setGalleryItems([]);
@@ -1064,26 +1153,50 @@ export function ERC721InteractionPanel({
               {galleryItems.map((item) => (
                 <article key={item.tokenId} className="nft-card reveal-on-scroll">
                   <div className="nft-card-inner">
-                    <div className="nft-card-face nft-card-front border border-forge-border/40 rounded-xl p-3">
-                      <div
-                        className="h-20 rounded-lg mb-3 shadow-lg"
-                        style={{ background: gradientForToken(item.tokenId) }}
-                      />
-                      <p className="text-xs text-white font-semibold">Token #{item.tokenId}</p>
-                      <p className="text-[10px] text-forge-muted mt-1">{networkConfig.name}</p>
+                    {/* Front of card - displays image and name */}
+                    <div className="nft-card-face nft-card-front border border-forge-border/40 rounded-xl p-3 flex flex-col">
+                      {/* NFT Image or gradient fallback */}
+                      <div className="h-24 rounded-lg mb-3 shadow-lg overflow-hidden bg-cover bg-center flex-shrink-0">
+                        {item.image ? (
+                          <img src={item.image} alt={item.name} className="w-full h-full object-cover" onError={(e) => {
+                            e.currentTarget.style.background = gradientForToken(item.tokenId);
+                            e.currentTarget.style.backgroundImage = 'none';
+                          }} />
+                        ) : (
+                          <div style={{ background: gradientForToken(item.tokenId) }} className="w-full h-full" />
+                        )}
+                      </div>
+                      
+                      {/* NFT name and description preview */}
+                      <div className="flex-1 flex flex-col justify-between">
+                        <div>
+                          <p className="text-xs text-white font-semibold truncate">{item.name || `Token #${item.tokenId}`}</p>
+                          {item.description && (
+                            <p className="text-[10px] text-forge-muted mt-1 line-clamp-2">{item.description}</p>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-forge-muted mt-2">{networkConfig.name}</p>
+                      </div>
                     </div>
 
-                    <div className="nft-card-face nft-card-back border border-violet-400/40 rounded-xl p-3">
-                      <p className="text-[10px] text-violet-200 font-medium mb-1">Owner</p>
-                      <p className="text-[10px] text-white font-mono break-all mb-2">{item.owner}</p>
-                      <a
-                        href={`${explorerUrl}/address/${contractAddress}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] text-violet-300 hover:text-violet-200"
-                      >
-                        Open contract
-                      </a>
+                    {/* Back of card - displays owner and contract info */}
+                    <div className="nft-card-face nft-card-back border border-violet-400/40 rounded-xl p-3 flex flex-col justify-between">
+                      <div>
+                        <p className="text-[10px] text-violet-200 font-medium mb-1">Owner</p>
+                        <p className="text-[10px] text-white font-mono break-all">{item.owner.slice(0, 6)}...{item.owner.slice(-4)}</p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {item.uri && (
+                          <a href={item.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] text-cyan-300 hover:text-cyan-200 block truncate">
+                            View metadata
+                          </a>
+                        )}
+                        <a href={`${explorerUrl}/address/${contractAddress}`} target="_blank" rel="noopener noreferrer"
+                          className="text-[10px] text-violet-300 hover:text-violet-200 block">
+                          Open contract
+                        </a>
+                      </div>
                     </div>
                   </div>
                 </article>

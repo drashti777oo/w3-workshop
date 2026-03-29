@@ -38,6 +38,14 @@ sol_storage! {
     #[entrypoint]
     struct RobinhoodNFT {
         address art_contract_address;
+        
+        /// Base URI for token metadata (e.g., "https://api.example.com/metadata/")
+        /// When tokenURI is called, it returns: baseUri + tokenId + ".json"
+        String base_uri;
+        
+        /// Mapping from tokenId to custom URI (optional override per token)
+        /// If set, this takes precedence over the baseUri approach
+        mapping(uint256 => String) token_uris;
 
         #[borrow] // Allows erc721 to access MyToken's storage and make calls
         Erc721<RobinhoodNFTParams> erc721;
@@ -85,6 +93,62 @@ impl RobinhoodNFT {
     pub fn burn(&mut self, token_id: U256) -> Result<(), Vec<u8>> {
         // This function checks that msg::sender() owns the specified token_id
         self.erc721.burn(msg::sender(), token_id)?;
+        Ok(())
+    }
+
+    /// Returns the URI for a given token ID
+    /// This follows the ERC-721 metadata standard
+    /// 
+    /// The contract stores a base URI (e.g., "https://api.example.com/metadata/")
+    /// and appends the token ID with ".json" extension
+    /// 
+    /// Example:
+    /// - baseUri = "https://api.example.com/metadata/"
+    /// - tokenId = 5
+    /// - returns "https://api.example.com/metadata/5.json"
+    pub fn token_uri(&self, token_id: U256) -> Result<String, Vec<u8>> {
+        // First check if this token exists
+        if self.erc721.owner_of(token_id).is_err() {
+            return Err("Token does not exist".as_bytes().to_vec());
+        }
+
+        // If a custom URI exists for this token, return it
+        let custom_uri = self.token_uris.get(token_id);
+        if !custom_uri.is_empty() {
+            return Ok(custom_uri);
+        }
+
+        // Otherwise, construct URI from base_uri + tokenId + ".json"
+        let base = self.base_uri.clone();
+        let token_id_str = alloc::format!("{}", token_id);
+        
+        let mut uri = base;
+        uri.push_str(&token_id_str);
+        uri.push_str(".json");
+        
+        Ok(uri)
+    }
+
+    /// Sets the base URI for all tokens
+    /// Only the contract owner/deployer should be able to call this
+    /// 
+    /// Example: "https://api.example.com/metadata/"
+    /// This will make token URIs like: https://api.example.com/metadata/1.json
+    pub fn set_base_uri(&mut self, new_base_uri: String) -> Result<(), Vec<u8>> {
+        // In production, add access control here to ensure only owner can call
+        // For now, this is public (be careful in production!)
+        self.base_uri = new_base_uri;
+        Ok(())
+    }
+
+    /// Sets a custom URI for a specific token
+    /// This takes precedence over the baseUri + tokenId approach
+    pub fn set_token_uri(&mut self, token_id: U256, uri: String) -> Result<(), Vec<u8>> {
+        // Verify the token exists
+        self.erc721.owner_of(token_id)?;
+        
+        // Store the custom URI
+        self.token_uris.setter(token_id).set(uri);
         Ok(())
     }
 }
