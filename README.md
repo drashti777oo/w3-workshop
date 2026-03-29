@@ -1,98 +1,113 @@
-# My Dapp
+# W3 Workshop
 
-A Web3 application - composed with [N]skills
+Multi-chain ERC-721 workshop project with:
+- Next.js frontend (`apps/web`)
+- Rust Stylus contract (`contracts/erc721`)
+- deployment and security scripts (`scripts`)
 
-## 📁 Project Structure
+## Folder Structure
 
+```text
+w3-workshop/
+|- apps/
+|  |- web/
+|  |  |- src/
+|  |  |  |- app/                         # Next.js App Router pages/providers
+|  |  |  |- components/                  # UI components (wallet, chain selector, demo mint panel)
+|  |  |  |- lib/
+|  |  |  |  |- erc721-stylus/            # ERC-721 interaction logic + panels + generators
+|  |  |  |  |- wallet-auth/              # Wallet auth helpers
+|  |  |  |  |- chains.ts                 # Chain definitions
+|  |  |  |  |- wagmi.ts                  # Wagmi config
+|  |  |  |- types/
+|  |  |- package.json
+|  |  |- next.config.js
+|  |  |- tailwind.config.js
+|- contracts/
+|  |- erc721/
+|  |  |- src/
+|  |  |  |- lib.rs
+|  |  |  |- erc721.rs
+|  |  |  |- main.rs
+|  |  |- Cargo.toml
+|- docs/
+|  |- erc721-nft.md
+|  |- METADATA_IMPLEMENTATION.md
+|  |- SMARTCACHE_USAGE.md
+|  |- RADAR_SECURITY_ANALYSIS.md
+|  |- frontend/README.md
+|- scripts/
+|  |- deploy-erc721.ts
+|  |- deploy-sepolia.sh
+|  |- deploy-mainnet.sh
+|  |- install-radar.sh
+|  |- run-radar.sh
+|- MULTI_CHAIN_GUIDE.md
+|- package.json
+|- README.md
 ```
-my-dapp/
-├── apps/
-│   └── web/                    # Next.js frontend
-│       ├── src/
-│       ├── package.json
-│       └── ...
-├── contracts/                  # Rust/Stylus smart contracts
-│   ├── mycontract/            # Original contract (no caching)
-│   │   └── src/lib.rs
-│   └── cached-contract/       # Contract with is_cacheable helper
-│       └── src/lib.rs
-├── docs/                       # Documentation
-├── scripts/                     # Deploy scripts
-├── .gitignore
-└── README.md
-```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Node.js 18+
-- npm, yarn, or pnpm
+- npm (or pnpm)
 
-### Installation
+### Install
 
-1. **Clone the repository:**
-   ```bash
-   git clone <your-repo-url>
-   cd my-dapp
-   ```
+```bash
+npm install
+cd apps/web
+npm install
+```
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   # or
-   pnpm install
-   ```
+### Run Frontend
 
-3. **Set up environment variables:**
-   ```bash
-   cp .env.example .env
-   ```
+```bash
+cd apps/web
+npm run dev
+```
 
-   Edit `.env` and configure:
-      - `PRIVATE_KEY`: Private key for deployment and transactions
-   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`: WalletConnect Cloud project ID for wallet connections
+### Typecheck Frontend
 
-4. **Deploy contracts** (from repo root): `pnpm deploy:sepolia` or `pnpm deploy:mainnet`
+```bash
+cd apps/web
+npm run typecheck
+```
 
-5. **Scripts (Windows):** Run `pnpm fix-scripts` or `dos2unix scripts/*.sh` if you see line-ending errors.
+## Scripts
 
-## 🔗 Smart Contracts
+### Root (`package.json`)
+- `npm run deploy:erc721` - Deploy ERC-721 via TypeScript script.
+- `npm run deploy:sepolia` - Deploy shell workflow for Sepolia.
+- `npm run deploy:mainnet` - Deploy shell workflow for mainnet.
+- `npm run security:install` - Install Radar security tooling.
+- `npm run security:analyze` - Run Radar analysis.
+- `npm run fix-scripts` - Normalize script line endings.
 
-The `contracts/` folder contains Rust/Stylus smart contract source code. See `docs/` for deployment and integration guides.
+### Frontend (`apps/web/package.json`)
+- `npm run dev` - Start Next.js app.
+- `npm run build` - Build app.
+- `npm run start` - Serve production build.
+- `npm run lint` - Typecheck alias (tsc noEmit).
+- `npm run typecheck` - TypeScript type check.
 
-## 🛠 Available Scripts
+## Smart Contract
 
-| Command | Description |
-|---------|-------------|
-| `pnpm deploy:sepolia` | Deploy to Arbitrum Sepolia |
-| `pnpm deploy:mainnet` | Deploy to Arbitrum One |
-| `pnpm fix-scripts` | Fix CRLF line endings (Windows) |
+Contract source is in `contracts/erc721`.
 
-## 🌐 Supported Networks
+Key files:
+- `contracts/erc721/src/lib.rs`
+- `contracts/erc721/src/erc721.rs`
+- `contracts/erc721/src/main.rs`
 
-- Arbitrum Sepolia (Testnet)
-- Arbitrum One (Mainnet)
-- Superposition
-- Superposition Testnet
+## Docs
 
-## 📚 Tech Stack
-
-- **Framework:** Next.js 14 (App Router)
-- **Styling:** Tailwind CSS
-- **Web3:** wagmi + viem
-- **Wallet Connection:** RainbowKit
-
-## 📖 Documentation
-
-See the `docs/` folder for:
-- Contract interaction guide
-- Deployment instructions
-- API reference
+See `docs/` for:
+- ERC-721 and metadata notes
+- frontend notes
+- security analysis references
 
 ## License
 
 MIT
-
----
-
-Generated with ❤️ by [[N]skills](https://www.nskills.xyz)
