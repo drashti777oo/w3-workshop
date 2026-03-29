@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react';
 import { WalletButton } from '@/components/wallet-button';
+import { WalletStatus } from '@/components/wallet-status';
 import dynamic from 'next/dynamic';
 import { Blocks, ShieldCheck, Sparkles, Rocket, AlertCircle } from 'lucide-react';
 
@@ -81,7 +82,10 @@ export default function Home() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <WalletButton />
+              <div className="flex flex-col gap-2 flex-1 min-w-fit">
+                <WalletButton />
+                <WalletStatus />
+              </div>
               <span className="text-xs text-forge-muted">Supports Arbitrum, Sepolia, and custom networks</span>
             </div>
 

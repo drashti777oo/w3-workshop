@@ -22,7 +22,8 @@ import {
   X,
   Stars,
   ScrollText,
-  BarChart3
+  BarChart3,
+  ArrowRight
 } from 'lucide-react';
 import { cn } from './cn';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './Select';
@@ -943,6 +944,35 @@ export function ERC721InteractionPanel({
           )}
         </div>
       </div>
+
+      {/* Network Mismatch Warning - Show if wallet is connected but on wrong network */}
+      {walletConnected && currentChain?.id !== networkConfig.chainId && (
+        <div className="p-3 rounded-lg border border-red-500/40 bg-red-500/10 reveal-on-scroll space-y-2">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-[10px] font-medium text-red-300">Network Mismatch</p>
+              <p className="text-[9px] text-red-200/80 mt-1">
+                Connected to <span className="font-semibold">{currentChain?.name || 'Unknown'}</span> but interacting with <span className="font-semibold">{networkConfig.name}</span>. 
+                Switch in your wallet or select a different app network.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              try {
+                await switchChainAsync({ chainId: networkConfig.chainId });
+              } catch (error) {
+                console.error('Failed to switch chain:', error);
+              }
+            }}
+            className="w-full py-1.5 bg-red-600 hover:bg-red-500 text-white rounded text-[10px] font-medium transition-colors flex items-center justify-center gap-1"
+          >
+            <ArrowRight className="w-3 h-3" />
+            Switch to {networkConfig.name}
+          </button>
+        </div>
+      )}
 
       {/* Network Selector */}
       <div className="space-y-1.5 reveal-on-scroll">
