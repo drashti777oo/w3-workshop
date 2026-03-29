@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { cn } from './cn';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './Select';
+import { useToast, ToastContainer } from '@/components/toast';
 import { useAccount, useWalletClient, usePublicClient, useSwitchChain } from 'wagmi';
 import { arbitrum, arbitrumSepolia } from 'viem/chains';
 import type { Chain } from 'viem';
@@ -293,6 +294,9 @@ export function ERC721InteractionPanel({
   const publicClient = usePublicClient({ chainId: networkConfig.chainId as any });
   const { data: walletClient } = useWalletClient({ chainId: networkConfig.chainId as any });
   const { switchChainAsync } = useSwitchChain();
+
+  // Toast notifications
+  const { toasts, addToast, removeToast } = useToast();
 
   // NFT info and dashboard data
   const [collectionName, setCollectionName] = useState<string | null>(null);
@@ -690,21 +694,73 @@ export function ERC721InteractionPanel({
     }
 
     if (!walletConnected) {
-      setTxStatus({ status: 'error', message: 'Please connect your wallet first' });
-      setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
+      addToast({
+        type: 'error',
+        title: 'Wallet Not Connected',
+        message: 'Please connect your wallet first',
+        duration: 5000,
+      });
       return;
     }
 
     try {
+      // Show pending toast
+      addToast({
+        type: 'pending',
+        title: 'Confirm in wallet',
+        message: 'Please approve the transaction in your wallet',
+        duration: 0, // Don't auto-dismiss pending
+      });
+
       setTxStatus({ status: 'pending', message: 'Please confirm in wallet...' });
       const tx = await operation();
+
+      // Update pending toast with hash
+      addToast({
+        type: 'pending',
+        title: 'Processing transaction',
+        message: `Hash: ${tx.hash.slice(0, 10)}...`,
+        action: {
+          label: 'View on explorer',
+          href: `${explorerUrl}/tx/${tx.hash}`,
+        },
+        duration: 0,
+      });
+
       setTxStatus({ status: 'pending', message: 'Transaction pending...', hash: tx.hash });
       const receipt = await tx.wait();
       setTxStatus({ status: 'success', message: successMessage, hash: tx.hash });
+
+      // Show success toast
+      addToast({
+        type: 'success',
+        title: successMessage,
+        message: `Transaction confirmed on chain`,
+        action: {
+          label: 'View on explorer',
+          href: `${explorerUrl}/tx/${tx.hash}`,
+        },
+        duration: 6000,
+      });
+
       fetchNFTInfo();
       if (receipt) onSuccess?.(receipt, tx.hash);
     } catch (error: any) {
-      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
+      const errorMessage = normalizeErrorMessage(error);
+      setTxStatus({ status: 'error', message: errorMessage });
+
+      // Show error toast with more detail
+      let errorTitle = 'Transaction Failed';
+      if (error.code === 'ACTION_REJECTED' || error.reason?.includes('cancelled')) {
+        errorTitle = 'Transaction Rejected';
+      }
+
+      addToast({
+        type: 'error',
+        title: errorTitle,
+        message: errorMessage.slice(0, 100), // Truncate for display
+        duration: 8000,
+      });
     }
     setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 7000);
   };
@@ -723,7 +779,14 @@ export function ERC721InteractionPanel({
         }
       );
     } catch (error: any) {
-      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
+      const errorMessage = normalizeErrorMessage(error);
+      setTxStatus({ status: 'error', message: errorMessage });
+      addToast({
+        type: 'error',
+        title: 'Failed to mint NFT',
+        message: errorMessage.slice(0, 80),
+        duration: 6000,
+      });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
@@ -742,7 +805,14 @@ export function ERC721InteractionPanel({
         }
       );
     } catch (error: any) {
-      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
+      const errorMessage = normalizeErrorMessage(error);
+      setTxStatus({ status: 'error', message: errorMessage });
+      addToast({
+        type: 'error',
+        title: 'Failed to mint to address',
+        message: errorMessage.slice(0, 80),
+        duration: 6000,
+      });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
@@ -761,7 +831,14 @@ export function ERC721InteractionPanel({
         }
       );
     } catch (error: any) {
-      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
+      const errorMessage = normalizeErrorMessage(error);
+      setTxStatus({ status: 'error', message: errorMessage });
+      addToast({
+        type: 'error',
+        title: 'Failed to safe mint',
+        message: errorMessage.slice(0, 80),
+        duration: 6000,
+      });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
@@ -775,7 +852,14 @@ export function ERC721InteractionPanel({
         `NFT #${transferTokenId} transferred!`
       );
     } catch (error: any) {
-      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
+      const errorMessage = normalizeErrorMessage(error);
+      setTxStatus({ status: 'error', message: errorMessage });
+      addToast({
+        type: 'error',
+        title: 'Transfer failed',
+        message: errorMessage.slice(0, 80),
+        duration: 6000,
+      });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
@@ -789,7 +873,14 @@ export function ERC721InteractionPanel({
         `Approval set for NFT #${approveTokenId}!`
       );
     } catch (error: any) {
-      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
+      const errorMessage = normalizeErrorMessage(error);
+      setTxStatus({ status: 'error', message: errorMessage });
+      addToast({
+        type: 'error',
+        title: 'Approval failed',
+        message: errorMessage.slice(0, 80),
+        duration: 6000,
+      });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
@@ -803,7 +894,14 @@ export function ERC721InteractionPanel({
         `Operator ${operatorApproved ? 'approved' : 'revoked'}!`
       );
     } catch (error: any) {
-      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
+      const errorMessage = normalizeErrorMessage(error);
+      setTxStatus({ status: 'error', message: errorMessage });
+      addToast({
+        type: 'error',
+        title: 'Operator approval failed',
+        message: errorMessage.slice(0, 80),
+        duration: 6000,
+      });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
@@ -817,7 +915,14 @@ export function ERC721InteractionPanel({
         `NFT #${burnTokenId} burned!`
       );
     } catch (error: any) {
-      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
+      const errorMessage = normalizeErrorMessage(error);
+      setTxStatus({ status: 'error', message: errorMessage });
+      addToast({
+        type: 'error',
+        title: 'Burn failed',
+        message: errorMessage.slice(0, 80),
+        duration: 6000,
+      });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
@@ -868,6 +973,9 @@ export function ERC721InteractionPanel({
 
   return (
     <div className="space-y-4 relative">
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+
       {mintSuccess.visible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setMintSuccess({ visible: false })} />
