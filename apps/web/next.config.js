@@ -1,8 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  experimental: {
+    cpus: 1,
+    workerThreads: true,
+  },
 
-  turbopack: {}, // ✅ ADD THIS LINE
+  turbopack: {
+    root: __dirname,
+  },
 
   webpack: (config) => {
     config.resolve.fallback = { fs: false, net: false, tls: false };

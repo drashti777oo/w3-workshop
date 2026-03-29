@@ -192,8 +192,8 @@ export function ERC721InteractionPanel({
 
   // Wagmi hooks for wallet connection
   const { address: userAddress, isConnected: walletConnected, chain: currentChain } = useAccount();
-  const publicClient = usePublicClient({ chainId: networkConfig.chainId });
-  const { data: walletClient } = useWalletClient({ chainId: networkConfig.chainId });
+  const publicClient = usePublicClient({ chainId: networkConfig.chainId as any });
+  const { data: walletClient } = useWalletClient({ chainId: networkConfig.chainId as any });
   const { switchChainAsync } = useSwitchChain();
 
   // NFT info

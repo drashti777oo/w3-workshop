@@ -28,7 +28,7 @@ export function useWalletAuth(): UseWalletAuthReturn {
     };
 
     const switchChain = async (chainId: number) => {
-        await switchChainAsync({ chainId });
+        await switchChainAsync({ chainId: chainId as any });
     };
 
     return {

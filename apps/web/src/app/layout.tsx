@@ -1,10 +1,7 @@
 
-    import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import type { Metadata } from 'next';
 import './globals.css';
 import { Providers } from './providers';
-
-    const inter = Inter({ subsets: ['latin'] });
 
     export const metadata: Metadata = {
       title: 'w3-workshop',
@@ -18,7 +15,7 @@ import { Providers } from './providers';
     }) {
       return (
         <html lang="en" suppressHydrationWarning>
-          <body className={inter.className}>
+          <body className="font-sans">
             <Providers>
               {children}
             </Providers>

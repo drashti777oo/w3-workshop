@@ -13,7 +13,7 @@ import {
   transferFrom,
   type CollectionInfo,
   type NFTInfo,
-} from '@cradle/erc721-stylus';
+} from '../src';
 import type { Address, Hash } from 'viem';
 
 const NFT_ADDRESS = process.env.NEXT_PUBLIC_NFT_ADDRESS as Address;
