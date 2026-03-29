@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ethers } from 'ethers';
 import {
   Sparkles,
@@ -18,7 +18,10 @@ import {
   CheckCircle2,
   Globe,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  X,
+  Stars,
+  ScrollText
 } from 'lucide-react';
 import { cn } from './cn';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './Select';
@@ -96,6 +99,7 @@ const ERC721_ABI = [
   "function mintTo(address to)",
   "function safeMint(address to)",
   "function burn(uint256 token_id)",
+  "event Transfer(address indexed from, address indexed to, uint256 indexed token_id)",
 ];
 
 // Network-specific default contract addresses (only for networks where contracts are deployed)
@@ -154,7 +158,7 @@ interface ChainLogos {
 
 interface ERC721InteractionPanelProps {
   contractAddress?: string;
-  network?: 'arbitrum' | 'arbitrum-sepolia' | 'superposition' | 'superposition-testnet' | 'robinhood-testnet';
+  network?: SupportedNetworkId;
   /** Optional: URLs for chain logos (arbitrum, superposition, robinhood) - pass to show logos in network selector */
   logos?: ChainLogos;
 }
@@ -165,7 +169,19 @@ interface TxStatus {
   hash?: string;
 }
 
+interface NFTGalleryItem {
+  tokenId: string;
+  owner: string;
+}
+
+interface MintSuccessState {
+  visible: boolean;
+  tokenId?: string;
+  hash?: string;
+}
+
 const NETWORK_IDS = ['arbitrum', 'arbitrum-sepolia', 'superposition', 'superposition-testnet', 'robinhood-testnet'] as const;
+type SupportedNetworkId = typeof NETWORK_IDS[number];
 
 function getLogoForNetwork(net: (typeof NETWORK_IDS)[number], logos?: ChainLogos): string | undefined {
   if (!logos) return undefined;
@@ -175,12 +191,31 @@ function getLogoForNetwork(net: (typeof NETWORK_IDS)[number], logos?: ChainLogos
   return undefined;
 }
 
+function normalizeErrorMessage(error: unknown): string {
+  const message = String((error as any)?.reason || (error as any)?.shortMessage || (error as any)?.message || error || '');
+  if (!message) return 'Something went wrong. Please try again.';
+  if (message.includes('User rejected') || message.includes('user rejected')) return 'Transaction was canceled in your wallet.';
+  if (message.includes('insufficient funds')) return 'Insufficient funds to complete this transaction.';
+  if (message.includes('execution reverted')) return 'Transaction reverted by contract rules.';
+  if (message.includes('No contract address')) return 'Please select or enter a valid contract address.';
+  if (message.includes('connect your wallet')) return 'Connect your wallet to continue.';
+  return message.length > 140 ? `${message.slice(0, 140)}...` : message;
+}
+
+function gradientForToken(tokenId: string): string {
+  let hash = 0;
+  for (let i = 0; i < tokenId.length; i += 1) hash = ((hash << 5) - hash + tokenId.charCodeAt(i)) | 0;
+  const hue = Math.abs(hash) % 360;
+  const hue2 = (hue + 72) % 360;
+  return `linear-gradient(135deg, hsl(${hue} 80% 55%), hsl(${hue2} 85% 45%))`;
+}
+
 export function ERC721InteractionPanel({
   contractAddress: initialAddress,
   network: initialNetwork = 'arbitrum-sepolia',
   logos,
 }: ERC721InteractionPanelProps) {
-  const [selectedNetwork, setSelectedNetwork] = useState<'arbitrum' | 'arbitrum-sepolia' | 'superposition' | 'superposition-testnet' | 'robinhood-testnet'>(initialNetwork);
+  const [selectedNetwork, setSelectedNetwork] = useState<SupportedNetworkId>(initialNetwork);
   const [contractAddress, setContractAddress] = useState(initialAddress || DEFAULT_CONTRACT_ADDRESSES[initialNetwork] || '');
   const [showCustomContract, setShowCustomContract] = useState(false);
   const [customAddress, setCustomAddress] = useState('');
@@ -228,6 +263,15 @@ export function ERC721InteractionPanel({
   const [customAddressError, setCustomAddressError] = useState<string | null>(null);
   const [isValidatingContract, setIsValidatingContract] = useState(false);
   const [contractError, setContractError] = useState<string | null>(null);
+  const [galleryItems, setGalleryItems] = useState<NFTGalleryItem[]>([]);
+  const [isGalleryLoading, setIsGalleryLoading] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const [showGallery, setShowGallery] = useState(false);
+  const [mintSuccess, setMintSuccess] = useState<MintSuccessState>({ visible: false });
+  const confettiPieces = useMemo(
+    () => Array.from({ length: 28 }, (_, index) => ({ id: index, left: ((index * 37) % 100) + 1, delay: (index % 7) * 0.08 })),
+    []
+  );
 
   // Check if using the default contract for the selected network
   const defaultAddress = DEFAULT_CONTRACT_ADDRESSES[selectedNetwork];
@@ -294,43 +338,33 @@ export function ERC721InteractionPanel({
   }, [contractAddress, rpcUrl, selectedNetwork]);
 
   const getWriteContract = useCallback(async () => {
-    console.log('[ERC721] getWriteContract called', { contractAddress, walletConnected, currentChainId: currentChain?.id, targetChainId: networkConfig.chainId });
-
     if (!contractAddress) {
-      console.error('[ERC721] No contract address');
       throw new Error('No contract address specified');
     }
 
     if (!walletConnected) {
-      console.error('[ERC721] Wallet not connected');
       throw new Error('Please connect your wallet first');
     }
 
     // Check if ethereum provider exists
     const ethereum = (window as any).ethereum;
     if (!ethereum) {
-      console.error('[ERC721] No ethereum provider found');
       throw new Error('No wallet detected. Please install MetaMask.');
     }
 
     // Switch chain if necessary
     const targetChainIdHex = `0x${networkConfig.chainId.toString(16)}`;
-    console.log('[ERC721] Current chain:', currentChain?.id, 'Target chain:', networkConfig.chainId);
 
     if (currentChain?.id !== networkConfig.chainId) {
-      console.log('[ERC721] Switching chain to', networkConfig.name);
       try {
         // Try to switch to the chain
         await ethereum.request({
           method: 'wallet_switchEthereumChain',
           params: [{ chainId: targetChainIdHex }],
         });
-        console.log('[ERC721] Chain switched successfully');
       } catch (switchError: any) {
-        console.log('[ERC721] Switch error:', switchError.code, switchError.message);
         // Chain doesn't exist, try to add it
         if (switchError.code === 4902 || switchError.message?.includes('Unrecognized chain') || switchError.message?.includes('wallet_addEthereumChain')) {
-          console.log('[ERC721] Chain not found, adding chain...');
           try {
             await ethereum.request({
               method: 'wallet_addEthereumChain',
@@ -342,9 +376,7 @@ export function ERC721InteractionPanel({
                 blockExplorerUrls: [networkConfig.explorerUrl],
               }],
             });
-            console.log('[ERC721] Chain added successfully');
           } catch (addError: any) {
-            console.error('[ERC721] Failed to add chain:', addError);
             throw new Error(`Failed to add ${networkConfig.name} to wallet: ${addError.message}`);
           }
         } else if (switchError.code === 4001) {
@@ -356,15 +388,22 @@ export function ERC721InteractionPanel({
     }
 
     // Use ethers with window.ethereum directly for better compatibility
-    console.log('[ERC721] Creating provider and signer...');
     const provider = new ethers.BrowserProvider(ethereum);
     const signer = await provider.getSigner();
-    console.log('[ERC721] Signer address:', await signer.getAddress());
 
     const contract = new ethers.Contract(contractAddress, ERC721_ABI, signer);
-    console.log('[ERC721] Contract created at:', contractAddress);
     return contract;
   }, [contractAddress, walletConnected, currentChain?.id, networkConfig]);
+
+  // Helper for RPC timeout protection
+  const withTimeout = useCallback(async <T,>(promise: Promise<T>, ms: number = 10000): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => 
+        setTimeout(() => reject(new Error(`RPC call timeout after ${ms}ms`)), ms)
+      )
+    ]);
+  }, []);
 
   // Helper to parse RPC/contract errors into user-friendly messages
   const parseContractError = useCallback((error: any): string => {
@@ -393,10 +432,10 @@ export function ERC721InteractionPanel({
     setContractError(null);
 
     try {
-      const [name, symbol] = await Promise.all([
+      const [name, symbol] = await withTimeout(Promise.all([
         contract.name().catch(() => null),
         contract.symbol().catch(() => null),
-      ]);
+      ]), 8000);
 
       // Check if we got valid data
       if (name === null && symbol === null) {
@@ -410,20 +449,119 @@ export function ERC721InteractionPanel({
 
       if (userAddress) {
         try {
-          const balance = await contract.balanceOf(userAddress);
+          const balance = await withTimeout(contract.balanceOf(userAddress), 5000);
           setUserBalance(balance.toString());
         } catch (balanceError: any) {
-          console.error('Error fetching balance:', balanceError);
           setContractError(parseContractError(balanceError));
         }
       }
       setIsConnected(true);
     } catch (error: any) {
-      console.error('Error:', error);
       setContractError(parseContractError(error));
       setIsConnected(false);
     }
   }, [getReadContract, userAddress, networkConfig.name, parseContractError]);
+
+  const findMintedTokenId = useCallback((receipt: ethers.TransactionReceipt): string | undefined => {
+    for (const log of receipt.logs) {
+      try {
+        const parsedLog = new ethers.Interface(ERC721_ABI).parseLog({
+          data: log.data,
+          topics: log.topics as string[],
+        });
+        if (!parsedLog || parsedLog.name !== 'Transfer') continue;
+        const from = String(parsedLog.args[0]).toLowerCase();
+        if (from === ethers.ZeroAddress) {
+          return parsedLog.args[2].toString();
+        }
+      } catch {
+        // Ignore unrelated logs
+      }
+    }
+    return undefined;
+  }, []);
+
+  const fetchOwnedNFTs = useCallback(async () => {
+    if (!userAddress || !contractAddress) {
+      setGalleryItems([]);
+      setGalleryError(null);
+      return;
+    }
+
+    setIsGalleryLoading(true);
+    setGalleryError(null);
+
+    try {
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const contract = new ethers.Contract(contractAddress, ERC721_ABI, provider);
+      const user = userAddress.toLowerCase();
+      
+      // Wrap queryFilter with timeout
+      const toLogs = await withTimeout(contract.queryFilter(contract.filters.Transfer(null, userAddress), 0, 'latest'), 12000);
+      const fromLogs = await withTimeout(contract.queryFilter(contract.filters.Transfer(userAddress, null), 0, 'latest'), 12000);
+
+      const combined = [...toLogs, ...fromLogs].sort((a: any, b: any) => {
+        if (a.blockNumber !== b.blockNumber) return Number(a.blockNumber) - Number(b.blockNumber);
+        const aIndex = Number(a.index ?? a.logIndex ?? 0);
+        const bIndex = Number(b.index ?? b.logIndex ?? 0);
+        return aIndex - bIndex;
+      });
+
+      const ownedTokenIds = new Set<string>();
+      for (const log of combined) {
+        const parsedLog = contract.interface.parseLog(log);
+        if (!parsedLog || parsedLog.name !== 'Transfer') continue;
+
+        const from = String(parsedLog.args[0]).toLowerCase();
+        const to = String(parsedLog.args[1]).toLowerCase();
+        const tokenId = parsedLog.args[2].toString();
+
+        if (to === user) ownedTokenIds.add(tokenId);
+        if (from === user) ownedTokenIds.delete(tokenId);
+      }
+
+      const gallery = Array.from(ownedTokenIds)
+        .sort((a, b) => Number(a) - Number(b))
+        .map((tokenId) => ({ tokenId, owner: userAddress }));
+
+      setGalleryItems(gallery);
+    } catch (error) {
+      setGalleryError(normalizeErrorMessage(error));
+      setGalleryItems([]);
+    } finally {
+      setIsGalleryLoading(false);
+    }
+  }, [contractAddress, rpcUrl, userAddress, withTimeout]);
+
+  useEffect(() => {
+    if (!mintSuccess.visible) return;
+    const timer = setTimeout(() => setMintSuccess({ visible: false }), 4200);
+    return () => clearTimeout(timer);
+  }, [mintSuccess.visible]);
+
+  // Only fetch gallery when explicitly requested or after successful mint
+  useEffect(() => {
+    if (!showGallery && !mintSuccess.visible) return;
+    fetchOwnedNFTs();
+  }, [fetchOwnedNFTs, contractAddress, selectedNetwork, userAddress, showGallery, mintSuccess.visible]);
+
+  useEffect(() => {
+    if (txStatus.status === 'success') fetchOwnedNFTs();
+  }, [txStatus.status, txStatus.hash, fetchOwnedNFTs]);
+
+  useEffect(() => {
+    const elements = document.querySelectorAll('.reveal-on-scroll');
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) entry.target.classList.add('is-visible');
+        });
+      },
+      { threshold: 0.15 }
+    );
+    elements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [galleryItems.length, isConnected, walletConnected, selectedNetwork, txStatus.status]);
 
   useEffect(() => {
     if (contractAddress && rpcUrl) {
@@ -433,94 +571,91 @@ export function ERC721InteractionPanel({
 
   const handleTransaction = async (
     operation: () => Promise<ethers.TransactionResponse>,
-    successMessage: string
+    successMessage: string,
+    onSuccess?: (receipt: ethers.TransactionReceipt, txHash: string) => void
   ) => {
-    console.log('[ERC721] handleTransaction called, walletConnected:', walletConnected, 'txStatus:', txStatus.status);
-
     if (txStatus.status === 'pending') {
-      console.log('[ERC721] Transaction already pending, skipping');
       return;
     }
 
     if (!walletConnected) {
-      console.log('[ERC721] Wallet not connected');
       setTxStatus({ status: 'error', message: 'Please connect your wallet first' });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
       return;
     }
 
     try {
-      setTxStatus({ status: 'pending', message: 'Confirming...' });
-      console.log('[ERC721] Executing operation...');
+      setTxStatus({ status: 'pending', message: 'Please confirm in wallet...' });
       const tx = await operation();
-      console.log('[ERC721] Transaction submitted:', tx.hash);
-      setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: tx.hash });
-      await tx.wait();
-      console.log('[ERC721] Transaction confirmed');
+      setTxStatus({ status: 'pending', message: 'Transaction pending...', hash: tx.hash });
+      const receipt = await tx.wait();
       setTxStatus({ status: 'success', message: successMessage, hash: tx.hash });
       fetchNFTInfo();
+      if (receipt) onSuccess?.(receipt, tx.hash);
     } catch (error: any) {
-      console.error('[ERC721] Transaction error:', error);
-      const errorMsg = error.reason || error.message || error.shortMessage || 'Transaction failed';
-      setTxStatus({ status: 'error', message: errorMsg });
+      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
     }
-    setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
+    setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 7000);
   };
 
   const handleMint = async () => {
-    console.log('[ERC721] handleMint called');
     try {
       const contract = await getWriteContract();
-      if (!contract) {
-        console.error('[ERC721] getWriteContract returned null');
-        return;
-      }
-      console.log('[ERC721] Got contract, calling mint()...');
+      if (!contract) return;
       handleTransaction(
         () => contract.mint(),
-        'NFT minted to yourself!'
+        'NFT minted to your wallet.',
+        (receipt, txHash) => {
+          const tokenId = findMintedTokenId(receipt);
+          setMintSuccess({ visible: true, tokenId, hash: txHash });
+          fetchOwnedNFTs();
+        }
       );
     } catch (error: any) {
-      console.error('[ERC721] handleMint error:', error);
-      setTxStatus({ status: 'error', message: error.message || 'Failed to prepare transaction' });
+      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
 
   const handleMintTo = async () => {
-    console.log('[ERC721] handleMintTo called');
     try {
       const contract = await getWriteContract();
       if (!contract || !mintToAddress) return;
       handleTransaction(
         () => contract.mintTo(mintToAddress),
-        'NFT minted successfully!'
+        'NFT minted successfully.',
+        (receipt, txHash) => {
+          const tokenId = findMintedTokenId(receipt);
+          setMintSuccess({ visible: true, tokenId, hash: txHash });
+          fetchOwnedNFTs();
+        }
       );
     } catch (error: any) {
-      console.error('[ERC721] handleMintTo error:', error);
-      setTxStatus({ status: 'error', message: error.message || 'Failed to prepare transaction' });
+      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
 
   const handleSafeMint = async () => {
-    console.log('[ERC721] handleSafeMint called');
     try {
       const contract = await getWriteContract();
       if (!contract || !safeMintToAddress) return;
       handleTransaction(
         () => contract['safeMint(address)'](safeMintToAddress),
-        'NFT safely minted!'
+        'NFT safely minted.',
+        (receipt, txHash) => {
+          const tokenId = findMintedTokenId(receipt);
+          setMintSuccess({ visible: true, tokenId, hash: txHash });
+          fetchOwnedNFTs();
+        }
       );
     } catch (error: any) {
-      console.error('[ERC721] handleSafeMint error:', error);
-      setTxStatus({ status: 'error', message: error.message || 'Failed to prepare transaction' });
+      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
 
   const handleTransfer = async () => {
-    console.log('[ERC721] handleTransfer called');
     try {
       const contract = await getWriteContract();
       if (!contract || !transferFrom || !transferTo || !transferTokenId) return;
@@ -529,14 +664,12 @@ export function ERC721InteractionPanel({
         `NFT #${transferTokenId} transferred!`
       );
     } catch (error: any) {
-      console.error('[ERC721] handleTransfer error:', error);
-      setTxStatus({ status: 'error', message: error.message || 'Failed to prepare transaction' });
+      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
 
   const handleApprove = async () => {
-    console.log('[ERC721] handleApprove called');
     try {
       const contract = await getWriteContract();
       if (!contract || !approveAddress || !approveTokenId) return;
@@ -545,14 +678,12 @@ export function ERC721InteractionPanel({
         `Approval set for NFT #${approveTokenId}!`
       );
     } catch (error: any) {
-      console.error('[ERC721] handleApprove error:', error);
-      setTxStatus({ status: 'error', message: error.message || 'Failed to prepare transaction' });
+      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
 
   const handleSetApprovalForAll = async () => {
-    console.log('[ERC721] handleSetApprovalForAll called');
     try {
       const contract = await getWriteContract();
       if (!contract || !operatorAddress) return;
@@ -561,14 +692,12 @@ export function ERC721InteractionPanel({
         `Operator ${operatorApproved ? 'approved' : 'revoked'}!`
       );
     } catch (error: any) {
-      console.error('[ERC721] handleSetApprovalForAll error:', error);
-      setTxStatus({ status: 'error', message: error.message || 'Failed to prepare transaction' });
+      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
 
   const handleBurn = async () => {
-    console.log('[ERC721] handleBurn called');
     try {
       const contract = await getWriteContract();
       if (!contract || !burnTokenId) return;
@@ -577,8 +706,7 @@ export function ERC721InteractionPanel({
         `NFT #${burnTokenId} burned!`
       );
     } catch (error: any) {
-      console.error('[ERC721] handleBurn error:', error);
-      setTxStatus({ status: 'error', message: error.message || 'Failed to prepare transaction' });
+      setTxStatus({ status: 'error', message: normalizeErrorMessage(error) });
       setTimeout(() => setTxStatus({ status: 'idle', message: '' }), 5000);
     }
   };
@@ -600,8 +728,8 @@ export function ERC721InteractionPanel({
     try {
       const balance = await contract.balanceOf(balanceCheckAddress);
       setBalanceCheckResult(balance.toString());
-    } catch (error) {
-      console.error('Error:', error);
+    } catch (error: any) {
+      setBalanceCheckResult(normalizeErrorMessage(error));
     }
   };
 
@@ -622,15 +750,64 @@ export function ERC721InteractionPanel({
     try {
       const isApproved = await contract.isApprovedForAll(approvalCheckOwner, approvalCheckOperator);
       setApprovalCheckResult(isApproved);
-    } catch (error) {
-      console.error('Error:', error);
+    } catch {
+      setApprovalCheckResult(false);
     }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {mintSuccess.visible && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setMintSuccess({ visible: false })} />
+          <div className="relative w-full max-w-sm rounded-2xl border border-emerald-400/40 bg-forge-surface shadow-2xl p-5 success-popover">
+            <button
+              onClick={() => setMintSuccess({ visible: false })}
+              className="absolute right-3 top-3 text-forge-muted hover:text-white transition-colors"
+              aria-label="Close success dialog"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2 mb-2">
+              <Stars className="w-4 h-4 text-emerald-300" />
+              <p className="text-sm font-semibold text-emerald-200">Mint Successful</p>
+            </div>
+            <p className="text-xs text-forge-muted mb-3">
+              Your NFT is now on-chain and visible in your gallery.
+            </p>
+            {mintSuccess.tokenId && (
+              <p className="text-xs text-white mb-1">
+                Token ID: <span className="font-mono text-emerald-300">#{mintSuccess.tokenId}</span>
+              </p>
+            )}
+            {mintSuccess.hash && (
+              <a
+                href={`${explorerUrl}/tx/${mintSuccess.hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-violet-300 hover:text-violet-200"
+              >
+                View transaction on explorer
+              </a>
+            )}
+
+            <div className="confetti-wrap pointer-events-none">
+              {confettiPieces.map((piece) => (
+                <span
+                  key={piece.id}
+                  className="confetti-piece"
+                  style={{
+                    left: `${piece.left}%`,
+                    animationDelay: `${piece.delay}s`,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
-      <div className="p-3 rounded-lg border border-violet-500/30 bg-gradient-to-r from-violet-500/10 to-transparent">
+      <div className="p-3 rounded-lg border border-violet-500/30 bg-gradient-to-r from-violet-500/10 to-transparent reveal-on-scroll">
         <div className="flex items-center gap-2 mb-1">
           <Sparkles className="w-4 h-4 text-violet-400" />
           <span className="text-sm font-medium text-white">
@@ -642,7 +819,7 @@ export function ERC721InteractionPanel({
 
       {/* Wallet Status */}
       <div className={cn(
-        'p-2.5 rounded-lg border',
+        'p-2.5 rounded-lg border reveal-on-scroll',
         walletConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-amber-500/5'
       )}>
         <div className="flex items-center gap-2">
@@ -658,7 +835,7 @@ export function ERC721InteractionPanel({
       </div>
 
       {/* Network Selector */}
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 reveal-on-scroll">
         <label className="text-xs text-forge-muted flex items-center gap-1.5">
           <Globe className="w-3 h-3" /> Network
         </label>
@@ -695,7 +872,7 @@ export function ERC721InteractionPanel({
       </div>
 
       {/* Contract Info */}
-      <div className="p-2.5 rounded-lg bg-forge-bg/50 border border-forge-border/30">
+      <div className="p-2.5 rounded-lg bg-forge-bg/50 border border-forge-border/30 reveal-on-scroll">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-forge-muted">Contract:</span>
@@ -775,29 +952,30 @@ export function ERC721InteractionPanel({
         <RefreshCw className="w-3.5 h-3.5" /> Refresh
       </button>
 
-      {/* Contract Error Banner */}
-      {/* {contractError && (
-        <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10">
+            {/* Contract Error Banner */}
+      {contractError && (
+        <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 reveal-on-scroll">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-xs text-red-300 font-medium">Contract Error</p>
-              <p className="text-[10px] text-red-400/80 mt-1">{contractError}</p>
+              <p className="text-[10px] text-red-300/90 mt-1">{contractError}</p>
             </div>
             <button
               onClick={() => setContractError(null)}
-              className="text-red-400/60 hover:text-red-400 text-xs"
+              className="text-red-400/60 hover:text-red-300 text-xs"
+              aria-label="Dismiss contract error"
             >
-              ✕
+              x
             </button>
           </div>
         </div>
-      )} */}
+      )}
 
       {/* Transaction Status */}
       {txStatus.status !== 'idle' && (
         <div className={cn(
-          'rounded-lg p-2.5 border flex items-start gap-2',
+          'rounded-lg p-2.5 border flex items-start gap-2 reveal-on-scroll',
           txStatus.status === 'pending' && 'bg-blue-500/10 border-blue-500/30',
           txStatus.status === 'success' && 'bg-emerald-500/10 border-emerald-500/30',
           txStatus.status === 'error' && 'bg-red-500/10 border-red-500/30'
@@ -812,6 +990,11 @@ export function ERC721InteractionPanel({
               txStatus.status === 'success' && 'text-emerald-300',
               txStatus.status === 'error' && 'text-red-300'
             )}>{txStatus.message}</p>
+            {txStatus.status === 'pending' && (
+              <div className="mt-2 h-1 w-full rounded-full bg-blue-500/20 overflow-hidden">
+                <div className="h-full w-1/3 rounded-full bg-blue-400 tx-loading-bar" />
+              </div>
+            )}
             {txStatus.hash && (
               <a href={`${explorerUrl}/tx/${txStatus.hash}`} target="_blank" rel="noopener noreferrer"
                 className="text-[9px] text-forge-muted hover:text-white flex items-center gap-1">
@@ -835,9 +1018,79 @@ export function ERC721InteractionPanel({
         </div>
       )}
 
+      {/* NFT Gallery */}
+      {isConnected && walletConnected && (
+        <div className="space-y-3 reveal-on-scroll">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ScrollText className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-xs font-medium text-white">NFT Gallery</span>
+            </div>
+            <button
+              onClick={fetchOwnedNFTs}
+              className="text-[10px] px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition-colors"
+            >
+              Reload
+            </button>
+          </div>
+
+          {isGalleryLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div key={`skeleton-${idx}`} className="h-36 rounded-xl border border-forge-border/40 bg-forge-bg/40 animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {galleryError && (
+            <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-200">
+              {galleryError}
+            </div>
+          )}
+
+          {!isGalleryLoading && !galleryError && galleryItems.length === 0 && (
+            <div className="p-4 rounded-xl border border-forge-border/40 bg-forge-bg/40 text-[11px] text-forge-muted text-center">
+              No NFTs in this wallet yet. Mint one to see it here.
+            </div>
+          )}
+
+          {!isGalleryLoading && galleryItems.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 nft-gallery-grid">
+              {galleryItems.map((item) => (
+                <article key={item.tokenId} className="nft-card reveal-on-scroll">
+                  <div className="nft-card-inner">
+                    <div className="nft-card-face nft-card-front border border-forge-border/40 rounded-xl p-3">
+                      <div
+                        className="h-20 rounded-lg mb-3 shadow-lg"
+                        style={{ background: gradientForToken(item.tokenId) }}
+                      />
+                      <p className="text-xs text-white font-semibold">Token #{item.tokenId}</p>
+                      <p className="text-[10px] text-forge-muted mt-1">{networkConfig.name}</p>
+                    </div>
+
+                    <div className="nft-card-face nft-card-back border border-violet-400/40 rounded-xl p-3">
+                      <p className="text-[10px] text-violet-200 font-medium mb-1">Owner</p>
+                      <p className="text-[10px] text-white font-mono break-all mb-2">{item.owner}</p>
+                      <a
+                        href={`${explorerUrl}/address/${contractAddress}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-violet-300 hover:text-violet-200"
+                      >
+                        Open contract
+                      </a>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Write Operations */}
       {isConnected && walletConnected && (
-        <div className="space-y-3">
+        <div className="space-y-3 reveal-on-scroll">
           <div className="flex items-center gap-2">
             <Send className="w-3.5 h-3.5 text-violet-400" />
             <span className="text-xs font-medium text-white">Write Operations</span>
@@ -960,7 +1213,7 @@ export function ERC721InteractionPanel({
 
       {/* Read Operations */}
       {isConnected && (
-        <div className="space-y-3">
+        <div className="space-y-3 reveal-on-scroll">
           <div className="flex items-center gap-2">
             <User className="w-3.5 h-3.5 text-purple-400" />
             <span className="text-xs font-medium text-white">Read Operations</span>
@@ -1051,3 +1304,4 @@ export function ERC721InteractionPanel({
     </div>
   );
 }
+

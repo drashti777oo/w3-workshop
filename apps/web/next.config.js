@@ -4,17 +4,11 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  experimental: {
-    cpus: 1,
-    workerThreads: true,
-  },
-
-  turbopack: {
-    root: __dirname,
-  },
-
   webpack: (config) => {
     config.resolve.fallback = { fs: false, net: false, tls: false };
+    if (!Array.isArray(config.externals)) {
+      config.externals = [];
+    }
     config.externals.push('pino-pretty', 'lokijs', 'encoding');
     return config;
   },
