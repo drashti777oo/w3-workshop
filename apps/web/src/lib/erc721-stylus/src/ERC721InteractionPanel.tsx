@@ -21,7 +21,8 @@ import {
   ChevronUp,
   X,
   Stars,
-  ScrollText
+  ScrollText,
+  BarChart3
 } from 'lucide-react';
 import { cn } from './cn';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './Select';
@@ -292,10 +293,12 @@ export function ERC721InteractionPanel({
   const { data: walletClient } = useWalletClient({ chainId: networkConfig.chainId as any });
   const { switchChainAsync } = useSwitchChain();
 
-  // NFT info
+  // NFT info and dashboard data
   const [collectionName, setCollectionName] = useState<string | null>(null);
   const [collectionSymbol, setCollectionSymbol] = useState<string | null>(null);
   const [userBalance, setUserBalance] = useState<string | null>(null);
+  const [totalSupply, setTotalSupply] = useState<string | null>(null);  // Total NFTs minted
+  const [showDataDashboard, setShowDataDashboard] = useState(true);  // Show data dashboard by default
 
   // Form inputs - Write operations
   const [transferFrom, setTransferFrom] = useState('');
@@ -521,6 +524,15 @@ export function ERC721InteractionPanel({
           setContractError(parseContractError(balanceError));
         }
       }
+      
+      // Fetch total supply for dashboard
+      try {
+        const supply = await withTimeout(contract.totalSupply(), 5000);
+        setTotalSupply(supply.toString());
+      } catch (supplyError: any) {
+        console.warn('Could not fetch total supply:', supplyError);
+      }
+      
       setIsConnected(true);
     } catch (error: any) {
       setContractError(parseContractError(error));
@@ -597,12 +609,16 @@ export function ERC721InteractionPanel({
             // Get the tokenURI from the contract
             const uri = await withTimeout(contract.tokenURI(item.tokenId), 5000);
             
+            // Fetch owner info
+            const ownerAddress = await withTimeout(contract.ownerOf(item.tokenId), 5000);
+            
             // Fetch and parse the metadata JSON
             const metadata = await fetchNFTMetadata(uri);
             
             return {
               ...item,
               uri,
+              owner: ownerAddress, // Update with verified owner from contract
               name: metadata?.name || `Token #${item.tokenId}`,
               description: metadata?.description,
               image: metadata?.image,
@@ -1099,6 +1115,86 @@ export function ERC721InteractionPanel({
         </div>
       )}
 
+      {/* Data Dashboard - Etherscan + NFT Dashboard Style */}
+      {isConnected && walletConnected && showDataDashboard && (
+        <div className="space-y-3 reveal-on-scroll">
+          {/* Dashboard Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-xs font-medium text-white">Dashboard</span>
+            </div>
+            <button
+              onClick={() => setShowDataDashboard(!showDataDashboard)}
+              className="text-[10px] px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition-colors"
+            >
+              {showDataDashboard ? 'Hide' : 'Show'}
+            </button>
+          </div>
+
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* User Balance */}
+            <div className="p-3 rounded-lg bg-forge-bg/50 border border-violet-400/30 hover:border-violet-400/50 transition-colors">
+              <p className="text-[10px] text-forge-muted mb-1.5">Your Balance</p>
+              <p className="text-lg font-bold text-violet-300">{userBalance || '0'}</p>
+              <p className="text-[9px] text-forge-muted mt-1">NFTs owned</p>
+            </div>
+
+            {/* Total Supply */}
+            <div className="p-3 rounded-lg bg-forge-bg/50 border border-cyan-400/30 hover:border-cyan-400/50 transition-colors">
+              <p className="text-[10px] text-forge-muted mb-1.5">Total Supply</p>
+              <p className="text-lg font-bold text-cyan-300">{totalSupply || '0'}</p>
+              <p className="text-[9px] text-forge-muted mt-1">Total minted</p>
+            </div>
+
+            {/* Collection Info */}
+            {collectionName && (
+              <div className="p-3 rounded-lg bg-forge-bg/50 border border-indigo-400/30 hover:border-indigo-400/50 transition-colors col-span-2">
+                <p className="text-[10px] text-forge-muted mb-1.5">Collection</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-indigo-300">{collectionName}</span>
+                  {collectionSymbol && (
+                    <span className="text-[9px] px-2 py-1 rounded bg-indigo-500/20 text-indigo-300">
+                      {collectionSymbol}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Wallet Address */}
+            {userAddress && (
+              <div className="p-3 rounded-lg bg-forge-bg/50 border border-emerald-400/30 hover:border-emerald-400/50 transition-colors col-span-2">
+                <p className="text-[10px] text-forge-muted mb-1.5">Connected Wallet</p>
+                <a
+                  href={`${explorerUrl}/address/${userAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] font-mono text-emerald-300 hover:text-emerald-200 flex items-center gap-1 group"
+                >
+                  {userAddress.slice(0, 10)}...{userAddress.slice(-8)}
+                  <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Owned NFTs Count */}
+          {galleryItems.length > 0 && (
+            <div className="p-3 rounded-lg bg-gradient-to-r from-violet-500/10 to-cyan-500/10 border border-violet-400/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                  <span className="text-[10px] text-forge-muted">Owned NFTs Listed</span>
+                </div>
+                <span className="text-sm font-bold text-violet-300">{galleryItems.length}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* NFT Stats */}
       {isConnected && walletConnected && (
         <div className="space-y-2">
@@ -1181,20 +1277,41 @@ export function ERC721InteractionPanel({
 
                     {/* Back of card - displays owner and contract info */}
                     <div className="nft-card-face nft-card-back border border-violet-400/40 rounded-xl p-3 flex flex-col justify-between">
-                      <div>
-                        <p className="text-[10px] text-violet-200 font-medium mb-1">Owner</p>
-                        <p className="text-[10px] text-white font-mono break-all">{item.owner.slice(0, 6)}...{item.owner.slice(-4)}</p>
+                      <div className="space-y-3">
+                        {/* Owner Info */}
+                        <div>
+                          <p className="text-[9px] text-violet-200 font-medium upper case mb-1">OWNER</p>
+                          <a
+                            href={`${explorerUrl}/address/${item.owner}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[9px] text-white font-mono hover:text-violet-200 flex items-center gap-1 group break-all"
+                          >
+                            {item.owner.slice(0, 8)}...{item.owner.slice(-6)}
+                            <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                          </a>
+                        </div>
+
+                        {/* Token ID */}
+                        <div>
+                          <p className="text-[9px] text-violet-200 font-medium mb-1">TOKEN ID</p>
+                          <p className="text-[10px] text-cyan-300 font-mono font-bold">#{item.tokenId}</p>
+                        </div>
                       </div>
-                      
-                      <div className="space-y-2">
+
+                      {/* Links */}
+                      <div className="space-y-2 border-t border-violet-400/20 pt-2">
                         {item.uri && (
-                          <a href={item.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] text-cyan-300 hover:text-cyan-200 block truncate">
+                          <a href={item.uri} target="_blank" rel="noopener noreferrer"
+                            className="text-[9px] text-cyan-300 hover:text-cyan-200 flex items-center gap-1 group">
                             View metadata
+                            <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </a>
                         )}
                         <a href={`${explorerUrl}/address/${contractAddress}`} target="_blank" rel="noopener noreferrer"
-                          className="text-[10px] text-violet-300 hover:text-violet-200 block">
-                          Open contract
+                          className="text-[9px] text-violet-300 hover:text-violet-200 flex items-center gap-1 group">
+                          Contract
+                          <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </a>
                       </div>
                     </div>
